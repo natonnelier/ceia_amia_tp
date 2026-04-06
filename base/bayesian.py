@@ -31,6 +31,7 @@ class BaseBayesianClassifier:
     m_obs = X.shape[1]
     y_hat = np.empty(m_obs, dtype=int)
 
+    # 2) Optimización: Pregunta 3: en este punto se puede optimizar el código para evitar el for-loop. Ver implementación de FasterQDA en qda.py
     for i in range(m_obs):
       y_hat[i] = self._predict_one(X[:,i].reshape(-1,1))
 

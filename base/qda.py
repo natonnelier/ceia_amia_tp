@@ -6,6 +6,8 @@ from base.bayesian import BaseBayesianClassifier
 
 class QDA(BaseBayesianClassifier):
 
+  # construye: 'inv_covs' -> lista de matrices de covarianza inversas, una por clase (cada row corresponde a un feature)
+  #           'means' -> lista de vectores de medias, uno por clase (cada row corresponde a un feature)
   def _fit_params(self, X, y):
     # estimate each covariance matrix
     self.inv_covs = [LA.inv(np.cov(X[:,y.flatten()==idx], bias=True))
@@ -43,3 +45,34 @@ class TensorizedQDA(QDA):
     def _predict_one(self, x):
         # return the class that has maximum a posteriori probability
         return np.argmax(self.log_a_priori + self._predict_log_conditionals(x))
+
+# 
+class FasterQDA(TensorizedQDA):
+
+    # override `predict`: en vez de iterar sobre cada observación, calcula todo el producto matricial de una vez (sin for-loop)
+    def predict(self, X):
+        # X shape: (p, n)
+
+        # tensor_means shape: (k, p, 1)
+        # unbiased_X shape: (k, p, n) — extraemos el mean de cada clase y se lo restamos a cada observación (broadcasting)
+        unbiased_X = X - self.tensor_means  # broadcasts (p,n) - (k,p,1) -> (k,p,n)
+
+        # tensor_inv_cov shape: (k, p, p)
+        # producto matricial entre la matriz de covarianza y el vector de cada observación (obs - tensor_mean)
+        # (k,p,p) @ (k,p,n) -> (k,p,n)
+        AX = self.tensor_inv_cov @ unbiased_X
+
+        # devuelve la diagonal en formato -> (k, n)
+        quad_forms = np.sum(AX * unbiased_X, axis=1)
+
+        # log determinants: (k,)  -> reshape a (k,1) para broadcasting
+        log_dets = 0.5 * np.log(LA.det(self.tensor_inv_cov)).reshape(-1, 1)
+
+        # log conditionals shape: (k, n)
+        log_conditionals = log_dets - 0.5 * quad_forms
+
+        # log posteriori shape: (k, n)
+        log_posteriori = self.log_a_priori.reshape(-1, 1) + log_conditionals
+
+        # return shape (1, n)
+        return np.argmax(log_posteriori, axis=0).reshape(1, -1)
