@@ -46,13 +46,36 @@ class TensorizedQDA(QDA):
         # return the class that has maximum a posteriori probability
         return np.argmax(self.log_a_priori + self._predict_log_conditionals(x))
 
-# 
+# Optimización: Pregunta 3: en este punto se puede optimizar el código para evitar el for-loop. Ver implementación de FasterQDA en qda.py
 class FasterQDA(TensorizedQDA):
 
     # override `predict`: en vez de iterar sobre cada observación, calcula todo el producto matricial de una vez (sin for-loop)
     def predict(self, X):
-        # X shape: (p, n)
+        # Pregunta 3: evitar el for-loop sobre observaciones.
+        # tensor_means shape: (k, p, 1)
+        # unbiased_X shape: (k, p, n)
+        unbiased_X = X - self.tensor_means  # (p,n) - (k,p,1) -> (k,p,n)
 
+        # (k,n,p) @ (k,p,p) @ (k,p,n) -> (k,n,n)
+        inner = unbiased_X.transpose(0, 2, 1) @ self.tensor_inv_cov @ unbiased_X
+
+        # tomar la diagonal de la matriz -> (k, n)
+        quad_forms = np.diagonal(inner, axis1=1, axis2=2)
+
+        # 0.5 * log(det(Σ^{-1})) term (broadcast a (k, n))
+        log_dets = 0.5 * np.log(LA.det(self.tensor_inv_cov)).reshape(-1, 1)
+
+        # log posteriori, shape (k, n)
+        log_posteriori = self.log_a_priori.reshape(-1, 1) + (log_dets - 0.5 * quad_forms)
+
+        # return shape (1, n)
+        return np.argmax(log_posteriori, axis=0).reshape(1, -1)
+
+# Optimización: Pregunta 6: Utilizar la propiedad antes demostrada para reimplementar la predicción del modelo `FasterQDA` de forma eficiente en un nuevo modelo `EfficientQDA`
+class EfficientQDA(TensorizedQDA):
+
+    # override `predict`: en vez de iterar sobre cada observación, calcula todo el producto matricial de una vez (sin for-loop)
+    def predict(self, X):
         # tensor_means shape: (k, p, 1)
         # unbiased_X shape: (k, p, n) — extraemos el mean de cada clase y se lo restamos a cada observación (broadcasting)
         unbiased_X = X - self.tensor_means  # broadcasts (p,n) - (k,p,1) -> (k,p,n)
